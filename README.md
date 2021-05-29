@@ -1,0 +1,1 @@
+prevent windows auto sleep when receive wol magic package continuously
