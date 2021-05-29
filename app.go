@@ -25,6 +25,7 @@ func getMacAddr() ([]string, error) {
 }
 
 func main() {
+	log.Print("service start")
 	lastRecWolTime := time.Now()
 	isCanSleep := true
 	noWolToSleepTime := time.Second * 120
