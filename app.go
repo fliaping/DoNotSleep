@@ -64,7 +64,7 @@ func main() {
 			panic(err)
 		}
 		packageHex := hex.EncodeToString(buf[:n])
-		log.Printf("%s sent this: %s\n", addr, packageHex)
+		log.Printf("received host %s sent this: %s\n", addr, packageHex)
 
 		isWol := isWolPackage(packageHex)
 		if isWol {
@@ -91,7 +91,7 @@ func isWolPackage(hexStr string) bool {
 	for _, a := range as {
 		macAddr := strings.ReplaceAll(a, ":", "")
 		wolStart := "ffffffffffff" + macAddr
-		log.Printf("wolStart:%s, packageStart:%s\n", wolStart, hexStr[:len(wolStart)])
+		//log.Printf("wolStart:%s, packageStart:%s\n", wolStart, hexStr[:len(wolStart)])
 		if strings.ToLower(hexStr[:len(wolStart)]) == strings.ToLower(wolStart) {
 			return true
 		}
