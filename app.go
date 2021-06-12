@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"time"
 )
 
 func getMacAddr() ([]string, error) {
@@ -26,30 +25,6 @@ func getMacAddr() ([]string, error) {
 
 func main() {
 	log.Print("service start")
-	lastRecWolTime := time.Now()
-	isCanSleep := true
-	noWolToSleepTime := time.Second * 120
-	checkDuration := time.Second * 5
-
-	go func() {
-		t := time.NewTicker(checkDuration)
-		defer t.Stop()
-
-		for {
-			<-t.C
-			//log.Println("start check still receive wol ...")
-			if time.Now().Sub(lastRecWolTime) > noWolToSleepTime && !isCanSleep {
-				log.Printf("no receive wol in %s, reset can be sleep\n", noWolToSleepTime)
-				res, err := wapi.SetThreadExecutionState(wapi.ES_CONTINUOUS)
-				if res != 0 {
-					log.Printf("[ERROR] reset to sleep fail,%s\n", err.Error())
-				} else {
-					isCanSleep = true
-				}
-				log.Printf("reset to sleep, result:%d\n", res)
-			}
-		}
-	}()
 
 	pc, err := net.ListenPacket("udp4", ":9")
 	if err != nil {
@@ -69,16 +44,11 @@ func main() {
 
 		isWol := isWolPackage(packageHex)
 		if isWol {
-			lastRecWolTime = time.Now()
-
-			if isCanSleep {
-				res, err := wapi.SetThreadExecutionState(wapi.ES_CONTINUOUS | wapi.ES_SYSTEM_REQUIRED)
-				if res != 0 {
-					log.Printf("[ERROR] set not sleep fail,%s\n", err.Error())
-				} else {
-					isCanSleep = false
-				}
-				log.Printf("set not sleep, result:%d\n", res)
+			res, err := wapi.SetThreadExecutionState(wapi.ES_SYSTEM_REQUIRED)
+			if res != 0 {
+				log.Printf("[ERROR] reset sleep timer fail,%s\n", err.Error())
+			} else {
+				log.Printf("reset sleep timer, result:%d\n", res)
 			}
 		}
 	}
