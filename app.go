@@ -40,7 +40,7 @@ func main() {
 	//开启休眠定时
 	c := cron.New() //精确到秒
 	//定时任务
-	spec := "* */1 * * * ?" //cron表达式，每秒一次
+	spec := "* */60 * * * ?" //cron表达式，每秒一次
 	err := c.AddFunc(spec, func() {
 		mrdCon := mrdConnected()
 		timeout := (time.Now().Unix() - latestWolTime) > 15*60 //15分钟没收到WOL即超时
