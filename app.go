@@ -1,110 +1,133 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
-	wapi "github.com/iamacarpet/go-win64api"
-	"github.com/robfig/cron"
 	"log"
-	"net"
-	"os/exec"
-	"strings"
-	"time"
+	"os"
+	"path/filepath"
+
+	"github.com/kardianos/service"
 )
 
-func getMacAddr() ([]string, error) {
-	ifas, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	var as []string
-	for _, ifa := range ifas {
-		a := ifa.HardwareAddr.String()
-		if a != "" {
-			as = append(as, a)
-		}
-	}
-	return as, nil
+var logger service.Logger
+
+type program struct {
 }
-func mrdConnected() bool {
-	out, err := exec.Command("powershell", "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');[System.Windows.Forms.SystemInformation]::TerminalServerSession").Output()
-	if err != nil {
-		log.Fatal(err)
-	}
-	var output string = string(out)
-	return strings.HasPrefix(output, "True")
+
+var stopChan = make(chan struct{})
+
+func (p *program) Start(s service.Service) error {
+	// Start should not block. Do the actual work async.
+	go p.run()
+	return nil
 }
+
+func (p *program) run() {
+	// Do work here
+	go func() {
+		start(stopChan)
+	}()
+}
+
+func (p *program) Stop(s service.Service) error {
+	// Stop should not block. Return with a few seconds.
+	// Any long running operations should be done in Start() - Stop().
+	// 发送停止信号
+	log.Printf("Stop start.......")
+	close(stopChan)
+	log.Printf("Stop end.......")
+	return nil
+}
+
 func main() {
-	log.Print("service start")
-	var latestWolTime int64 = time.Now().Unix()
-	//开启休眠定时
-	c := cron.New() //精确到秒
-	//定时任务
-	spec := "* */60 * * * ?" //cron表达式，每秒一次
-	err := c.AddFunc(spec, func() {
-		mrdCon := mrdConnected()
-		timeout := (time.Now().Unix() - latestWolTime) > 15*60 //15分钟没收到WOL即超时
-		if !mrdCon && timeout {
-			log.Printf("go sleep, mrdConnected%s,timeout:%s\n", mrdCon, timeout)
-			//rundll32.exe powrprof.dll,SetSuspendState 0,1,0
-			c := exec.Command("powershell", "rundll32.exe powrprof.dll,SetSuspendState 0,1,0")
-			if err := c.Run(); err != nil {
-				fmt.Println("Error: ", err)
-			}
-		}
-	})
+	// 获取当前执行的可执行文件的路径
+	exePath, err := os.Executable()
 	if err != nil {
+		fmt.Println("获取可执行文件路径失败:", err)
 		return
 	}
-	c.Start()
 
-	pc, err := net.ListenPacket("udp4", ":9")
+	// 将路径转换为绝对路径
+	absPath, err := filepath.Abs(exePath)
 	if err != nil {
-		panic(err)
+		fmt.Println("转换为绝对路径失败:", err)
+		return
 	}
-	defer func(pc net.PacketConn) {
-		err := pc.Close()
-		if err != nil {
-			log.Printf("[ERROR] ListenPacket error,%s\n", err.Error())
-		}
-	}(pc)
+	// 使用filepath.Dir获取程序所在的文件夹路径
+	dirPath := filepath.Dir(absPath)
+	// 构造日志文件的完整路径
+	logFilePath := filepath.Join(dirPath, "do_not_sleep.log")
 
-	buf := make([]byte, 1024)
+	fmt.Println("程序日志所在路径:", logFilePath)
 
-	// 从udp循环读取数据
-	for {
-		n, addr, err := pc.ReadFrom(buf)
-		if err != nil {
-			panic(err)
-		}
-		packageHex := hex.EncodeToString(buf[:n])
-		log.Printf("received host %s sent this: %s\n", addr, packageHex)
-
-		isWol := isWolPackage(packageHex)
-		if isWol {
-			latestWolTime = time.Now().Unix()
-			res, err := wapi.SetThreadExecutionState(wapi.ES_SYSTEM_REQUIRED)
-			if res != 0 {
-				log.Printf("[ERROR] reset sleep timer fail,%s\n", err.Error())
-			} else {
-				log.Printf("reset sleep timer, result:%d\n", res)
-			}
-		}
+	// 打开或创建日志文件
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("打开日志文件失败: %v", err)
 	}
-}
+	defer logFile.Close()
 
-func isWolPackage(hexStr string) bool {
-	as, err := getMacAddr()
+	// 将日志输出重定向到文件
+	log.SetOutput(logFile)
+	svcConfig := &service.Config{
+		Name:        "DoNotSleep",
+		DisplayName: "DoNotSleep",
+		Description: "Do Not Sleep, when received wol package continuously.",
+		Arguments:   []string{"run"},
+	}
+
+	prg := &program{}
+	s, err := service.New(prg, svcConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, a := range as {
-		macAddr := strings.ReplaceAll(a, ":", "")
-		wolStart := "ffffffffffff" + macAddr
-		//log.Printf("wolStart:%s, packageStart:%s\n", wolStart, hexStr[:len(wolStart)])
-		if strings.ToLower(hexStr[:len(wolStart)]) == strings.ToLower(wolStart) {
-			return true
-		}
+	logger, err = s.Logger(nil)
+	if err != nil {
+		log.Fatal(err)
 	}
-	return false
+
+	if len(os.Args) > 1 {
+		cmd := os.Args[1]
+		switch cmd {
+		case "install":
+			err = s.Install()
+			if err != nil {
+				fmt.Println("Failed to install:", err)
+				return
+			}
+			fmt.Println("Service installed")
+		case "start":
+			err = s.Start()
+			if err != nil {
+				fmt.Println("Failed to start:", err)
+				return
+			}
+			fmt.Println("Service started")
+		case "stop":
+			err = s.Stop()
+			if err != nil {
+				fmt.Println("Failed to stop:", err)
+				return
+			}
+			fmt.Println("Service stopped")
+		case "uninstall":
+			err = s.Uninstall()
+			if err != nil {
+				fmt.Println("Failed to uninstall:", err)
+				return
+			}
+			fmt.Println("Service uninstalled")
+		case "run":
+			err = s.Run()
+			if err != nil {
+				fmt.Println("Failed to run:", err)
+				return
+			}
+		default:
+			fmt.Println("Invalid command. Available commands are: install, start, stop, uninstall, run")
+		}
+		return
+	} else {
+		fmt.Println("Invalid command. Available commands are: install, start, stop, uninstall, run")
+	}
 }

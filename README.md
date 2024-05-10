@@ -3,45 +3,14 @@ prevent windows auto sleep when receive wol magic package continuously
 ## build
 
 ```cmd
-go build -o DoNotSleep.exe .
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o DoNotSleep.exe .
 ```
 
-## create service
+## Usage
 
-1. go to [winsw](https://github.com/winsw/winsw) and download release file `WinSW-x64.exe`
-2. create directory `DoNotSleep`, move `WinSW-x64.exe` to here and rename to `DoNotSleep_Service.exe`
-3. create xml file `DoNotSleep_Service.xml` and copy below example to this file
+open powershell as Administrator
 
-```xml
+`.\DoNotSleep.exe [install, start, stop, uninstall, run]`
 
-<service>
-
-    <!-- ID of the service. It should be unique across the Windows system-->
-    <id>DoNotSleep</id>
-    <!-- Display name of the service -->
-    <name>DoNotSleep</name>
-    <!-- Service description -->
-    <description>prevent windows auto sleep when receive wol magic package continuously</description>
-
-    <!-- Path to the executable, which should be started -->
-    <executable>C:\Program Files\DoNotSleep\DoNotSleep.exe</executable>
-    <onfailure action="restart" delay="10 sec"/>
-    <startmode>Automatic</startmode>
-    <interactive>true</interactive>
-</service>
-```
-
-4. move go program `DoNotSleep.exe` to dir `DoNotSleep`
-4. open powershell, type ` .\DoNotSleep_Service.exe install`
-5. find service(taskManager -> open service) and start
-
-Don't use sc.exe directly
-~~move DoNotSleep.exe to where you want and don't delete it.~~
-
-~~To create a Windows Service from an executable, you can use sc.exe:~~
-
-```cmd
-sc.exe create DoNotSleep binPath= "<path_to_the_service_executable>"
-```
-
-~~You must have quotation marks around the actual exe path, and a space after the binPath=.~~
+1. `.\DoNotSleep.exe install`
+2. `.\DoNotSleep.exe start`
