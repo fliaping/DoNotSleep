@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/kardianos/service"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var logger service.Logger
@@ -60,15 +61,14 @@ func main() {
 
 	fmt.Println("程序日志所在路径:", logFilePath)
 
-	// 打开或创建日志文件
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("打开日志文件失败: %v", err)
-	}
-	defer logFile.Close()
-
 	// 将日志输出重定向到文件
-	log.SetOutput(logFile)
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   logFilePath, // 日志文件路径
+		MaxSize:    10,                 // 日志文件最大大小（MB）
+		MaxBackups: 2,                  // 保留旧文件的最大个数
+		MaxAge:     28,                 // 保留旧文件的最大天数
+		Compress:   true,              // 是否压缩/归档旧文件
+	})
 	svcConfig := &service.Config{
 		Name:        "DoNotSleep",
 		DisplayName: "DoNotSleep",
